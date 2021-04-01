@@ -1,6 +1,7 @@
 import tensorflow.keras as K
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, UpSampling2D
 
 #the encoder, when called, takes the input features and returns the values of the hidden layer (or the bottle neck)
 class Encoder(K.layers.Layer):
@@ -33,6 +34,44 @@ class Decoder(K.layers.Layer):
     def call(self, encoded):
         activation = self.output_layer(encoded)
         return activation
+    
+#the encoder, for Convolutional Autoencoder, consists in 3 convolutional layers, each followed by a max pooling layer
+class ConvEncoder(K.layers.Layer):
+    def __init__(self, filters):
+        super().__init__()
+        self.conv1 = Conv2D(filters=filters[0], kernel_size=3, strides=1, activation='relu', padding='same')
+        self.conv2 = Conv2D(filters=filters[1], kernel_size=3, strides=1, activation='relu', padding='same')
+        self.conv3 = Conv2D(filters=filters[2], kernel_size=3, strides=1, activation='relu', padding='same')
+        self.pool = MaxPooling2D((2,2), padding='same')
+
+    def call(self, input_features):
+        x = self.conv1(input_features)
+        x = self.pool(x)
+        x = self.conv2(x)
+        x = self.pool(x)
+        x = self.conv3(x)
+        x = self.pool(x)        
+        return x
+
+#the decoder, is the opposite of encoder. We are using UpSampling as dual of MaxPooling to increase the size back
+class ConvDecoder(K.layers.Layer):
+    def __init__(self, filters):
+        super().__init__()
+        self.conv1 = Conv2D(filters=filters[2], kernel_size=3, strides=1, activation='relu', padding='same')
+        self.conv2 = Conv2D(filters=filters[1], kernel_size=3, strides=1, activation='relu', padding='same')
+        self.conv3 = Conv2D(filters=filters[0], kernel_size=3, strides=1, activation='relu', padding='valid')
+        self.conv4 = Conv2D(1, kernel_size=3, strides=1, activation='sigmoid', padding='same')
+        self.upsample = UpSampling2D((2,2))
+
+    def call(self, encoded):
+        x = self.conv1(encoded)
+        x = self.upsample(x)
+        x = self.conv2(x)
+        x = self.upsample(x)
+        x = self.conv3(x)
+        x = self.upsample(x)        
+        return self.conv4(x)
+
 
                     ###########################
                     ### Vanilla Autoencoder ###
@@ -108,3 +147,16 @@ class SparseAutoEncoder(AutoEncoder):
     def __init__(self, hidden_dim, original_dim):
         super().__init__(hidden_dim, original_dim)
         self.encoder = SparseEncoder(hidden_dim=hidden_dim)
+
+    
+                    ###########################
+                    #Convolutional Autoencoder#
+                    ###########################
+
+class ConvAutoEncoder(AutoEncoder):
+    def __init__(self, filters):
+        K.Model.__init__(self)
+        self.loss = []
+        self.filters = filters
+        self.encoder = ConvEncoder(filters=self.filters)
+        self.decoder = ConvDecoder(filters=self.filters)
